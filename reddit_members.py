@@ -68,24 +68,13 @@ def get_subreddit_members(subreddit_name: str) -> tuple[int, float]:
         # Navigate to the JSON endpoint
         page.goto(url, wait_until="networkidle", timeout=30000)
 
-        # Extract the JSON content from the page
-        content = page.content()
+        # Extract the JSON content from the page BEFORE closing browser
+        json_text = page.inner_text("body")
 
         # Close browser
         browser.close()
 
-        # Parse the JSON data from the page content
-        # The page displays the JSON as text, so we need to extract it
-        if "<pre" in content:
-            # JSON is wrapped in a <pre> tag
-            start = content.find("<pre")
-            start = content.find(">", start) + 1
-            end = content.find("</pre>", start)
-            json_text = content[start:end]
-        else:
-            # Try to find the JSON in the body
-            json_text = page.inner_text("body")
-
+        # Parse the JSON data
         data = json.loads(json_text)
         return data["data"]["subscribers"], data["data"]["created"]
 
