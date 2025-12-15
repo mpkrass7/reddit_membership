@@ -71,11 +71,24 @@ def get_subreddit_members(subreddit_name: str) -> tuple[int, float]:
         # Extract the JSON content from the page BEFORE closing browser
         json_text = page.inner_text("body")
 
+        # Debug: Print first 500 characters to see what we got
+        print(f"DEBUG: Page content (first 500 chars): {json_text[:500]}")
+        print(f"DEBUG: Content length: {len(json_text)}")
+
         # Close browser
         browser.close()
 
+        # Check if we got empty content
+        if not json_text or len(json_text.strip()) == 0:
+            raise Exception("Received empty content from Reddit")
+
         # Parse the JSON data
-        data = json.loads(json_text)
+        try:
+            data = json.loads(json_text)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Failed to parse JSON. Content: {json_text[:1000]}")
+            raise
+
         return data["data"]["subscribers"], data["data"]["created"]
 
 
