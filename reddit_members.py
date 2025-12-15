@@ -55,17 +55,37 @@ def get_subreddit_members(subreddit_name: str) -> tuple[int, float]:
     Returns:
         Number of subscribers and created date
     """
-    url = f"https://www.reddit.com/r/{subreddit_name}/about.json"
+    # Try old.reddit.com which has less aggressive blocking
+    url = f"https://old.reddit.com/r/{subreddit_name}/about.json"
 
     with sync_playwright() as p:
-        # Launch headless browser
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        # Launch browser with more realistic settings
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                '--disable-blink-features=AutomationControlled',  # Hide automation
+            ]
         )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            viewport={'width': 1920, 'height': 1080},
+            locale='en-US',
+        )
+
+        # Set extra HTTP headers
+        context.set_extra_http_headers({
+            'Accept-Language': 'en-US,en;q=0.9',
+        })
+
         page = context.new_page()
 
-        # Navigate to the JSON endpoint
+        # First visit old Reddit homepage to establish session
+        print("DEBUG: Visiting old.reddit.com homepage first...")
+        page.goto("https://old.reddit.com/", wait_until="networkidle", timeout=30000)
+        page.wait_for_timeout(2000)  # Wait 2 seconds like a real user
+
+        # Now navigate to the JSON endpoint
+        print(f"DEBUG: Navigating to {url}...")
         page.goto(url, wait_until="networkidle", timeout=30000)
 
         # Extract the JSON content from the page BEFORE closing browser
