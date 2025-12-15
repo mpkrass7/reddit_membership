@@ -1,9 +1,10 @@
 # ABOUTME: Script to fetch the number of members (subscribers) in a Reddit community
-# ABOUTME: Uses Reddit's public JSON API to fetch subscriber counts without authentication
+# ABOUTME: Uses Reddit's public JSON API with realistic browser headers to fetch subscriber counts
 
 from datetime import datetime
 import os
 import sys
+import time
 
 from databricks.sdk import WorkspaceClient
 from dotenv import load_dotenv
@@ -44,25 +45,55 @@ def append_to_databricks_table(table_name: str, data: dict) -> int:
     return 200
 
 
-def get_subreddit_members(subreddit_name: str) -> tuple[int, float]:
+def get_subreddit_members(subreddit_name: str, retry_count: int = 3) -> tuple[int, float]:
     """
     Fetch the number of subscribers for a given subreddit.
 
     Args:
         subreddit_name: Name of the subreddit (without 'r/' prefix)
+        retry_count: Number of retries if request fails
 
     Returns:
         Number of subscribers and created date
     """
-    # Use Reddit's public JSON API
     url = f"https://www.reddit.com/r/{subreddit_name}/about.json"
-    headers = {"User-Agent": "member_counter/1.0"}
 
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+    # Headers that mimic a real browser to avoid being blocked
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+    }
 
-    data = response.json()
-    return data["data"]["subscribers"], data["data"]["created"]
+    for attempt in range(retry_count):
+        try:
+            # Add a small delay to avoid rate limiting
+            if attempt > 0:
+                time.sleep(2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
+
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            return data["data"]["subscribers"], data["data"]["created"]
+
+        except requests.exceptions.HTTPError as e:
+            if attempt == retry_count - 1:
+                raise
+            print(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+        except requests.exceptions.RequestException as e:
+            if attempt == retry_count - 1:
+                raise
+            print(f"Attempt {attempt + 1} failed: {e}. Retrying...")
 
 
 def main():
