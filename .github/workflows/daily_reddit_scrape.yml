@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Install Playwright browsers
+        run: uv run playwright install --with-deps chromium
+
       - name: Run Reddit membership scraper
         env:
           DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}

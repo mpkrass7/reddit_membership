@@ -1,14 +1,14 @@
 # ABOUTME: Script to fetch the number of members (subscribers) in a Reddit community
-# ABOUTME: Uses Reddit's public JSON API with realistic browser headers to fetch subscriber counts
+# ABOUTME: Uses Playwright browser automation to fetch subscriber counts from Reddit
 
 from datetime import datetime
+import json
 import os
 import sys
-import time
 
 from databricks.sdk import WorkspaceClient
 from dotenv import load_dotenv
-import requests
+from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
@@ -45,63 +45,49 @@ def append_to_databricks_table(table_name: str, data: dict) -> int:
     return 200
 
 
-def get_subreddit_members(subreddit_name: str, retry_count: int = 3) -> tuple[int, float]:
+def get_subreddit_members(subreddit_name: str) -> tuple[int, float]:
     """
-    Fetch the number of subscribers for a given subreddit.
+    Fetch the number of subscribers for a given subreddit using Playwright.
 
     Args:
         subreddit_name: Name of the subreddit (without 'r/' prefix)
-        retry_count: Number of retries if request fails
 
     Returns:
         Number of subscribers and created date
     """
-    # Use old.reddit.com which has less strict anti-bot measures
-    url = f"https://old.reddit.com/r/{subreddit_name}/about.json"
+    url = f"https://www.reddit.com/r/{subreddit_name}/about.json"
 
-    # Create a session to maintain cookies
-    session = requests.Session()
+    with sync_playwright() as p:
+        # Launch headless browser
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
 
-    # Headers that mimic a real browser to avoid being blocked
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": f"https://old.reddit.com/r/{subreddit_name}/",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-origin",
-    }
+        # Navigate to the JSON endpoint
+        page.goto(url, wait_until="networkidle", timeout=30000)
 
-    for attempt in range(retry_count):
-        try:
-            # Add a small delay to avoid rate limiting
-            if attempt > 0:
-                time.sleep(2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
+        # Extract the JSON content from the page
+        content = page.content()
 
-            # First visit the subreddit page to get cookies
-            if attempt == 0:
-                session.get(f"https://old.reddit.com/r/{subreddit_name}/", headers=headers, timeout=10)
-                time.sleep(1)  # Small delay between requests
+        # Close browser
+        browser.close()
 
-            # Now fetch the JSON data
-            response = session.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
+        # Parse the JSON data from the page content
+        # The page displays the JSON as text, so we need to extract it
+        if "<pre" in content:
+            # JSON is wrapped in a <pre> tag
+            start = content.find("<pre")
+            start = content.find(">", start) + 1
+            end = content.find("</pre>", start)
+            json_text = content[start:end]
+        else:
+            # Try to find the JSON in the body
+            json_text = page.inner_text("body")
 
-            data = response.json()
-            return data["data"]["subscribers"], data["data"]["created"]
-
-        except requests.exceptions.HTTPError as e:
-            if attempt == retry_count - 1:
-                raise
-            print(f"Attempt {attempt + 1} failed: {e}. Retrying...")
-        except requests.exceptions.RequestException as e:
-            if attempt == retry_count - 1:
-                raise
-            print(f"Attempt {attempt + 1} failed: {e}. Retrying...")
+        data = json.loads(json_text)
+        return data["data"]["subscribers"], data["data"]["created"]
 
 
 def main():
