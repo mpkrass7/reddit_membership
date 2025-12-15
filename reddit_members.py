@@ -56,22 +56,24 @@ def get_subreddit_members(subreddit_name: str, retry_count: int = 3) -> tuple[in
     Returns:
         Number of subscribers and created date
     """
-    url = f"https://www.reddit.com/r/{subreddit_name}/about.json"
+    # Use old.reddit.com which has less strict anti-bot measures
+    url = f"https://old.reddit.com/r/{subreddit_name}/about.json"
+
+    # Create a session to maintain cookies
+    session = requests.Session()
 
     # Headers that mimic a real browser to avoid being blocked
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Accept-Language": "en-US,en;q=0.9",
         "Accept-Encoding": "gzip, deflate, br",
+        "Referer": f"https://old.reddit.com/r/{subreddit_name}/",
         "DNT": "1",
         "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Cache-Control": "max-age=0",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     }
 
     for attempt in range(retry_count):
@@ -80,7 +82,13 @@ def get_subreddit_members(subreddit_name: str, retry_count: int = 3) -> tuple[in
             if attempt > 0:
                 time.sleep(2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
 
-            response = requests.get(url, headers=headers, timeout=10)
+            # First visit the subreddit page to get cookies
+            if attempt == 0:
+                session.get(f"https://old.reddit.com/r/{subreddit_name}/", headers=headers, timeout=10)
+                time.sleep(1)  # Small delay between requests
+
+            # Now fetch the JSON data
+            response = session.get(url, headers=headers, timeout=10)
             response.raise_for_status()
 
             data = response.json()
