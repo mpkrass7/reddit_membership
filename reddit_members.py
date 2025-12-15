@@ -20,7 +20,6 @@ def append_to_databricks_table(table_name: str, data: dict) -> int:
         table_name: Name of the Databricks table
         data: Dictionary containing the data to append
     """
-    print("Initializing Databricks client...")
     w = WorkspaceClient(
         host=f"https://{os.getenv('DATABRICKS_SERVER_HOSTNAME')}",
         client_id=os.getenv("DATABRICKS_CLIENT_ID"),
@@ -33,18 +32,15 @@ def append_to_databricks_table(table_name: str, data: dict) -> int:
         [f"'{v}'" if isinstance(v, str) else str(v) for v in data.values()]
     )
     sql_query = f"INSERT INTO {table_name} ({columns}) VALUES ({values})"
-    print(f"Executing: {sql_query}")
 
     # Extract warehouse ID from HTTP path
     warehouse_id = os.getenv("DATABRICKS_HTTP_PATH").split("/")[-1]
-    print(f"Using warehouse: {warehouse_id}")
 
     # Execute statement
-    response = w.statement_execution.execute_statement(
+    w.statement_execution.execute_statement(
         warehouse_id=warehouse_id, statement=sql_query, wait_timeout="30s"
     )
 
-    print(f"Statement status: {response.status.state}")
     return 200
 
 
